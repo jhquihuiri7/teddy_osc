@@ -13,9 +13,9 @@ init:
         python -m pip install --upgrade pip
       }
   - sh: |
-      if [[ "$APPVEYOR_BUILD_WORKER_IMAGE" == "macOS" || "$APPVEYOR_BUILD_WORKER_IMAGE" == "Ubuntu" ]]; then
+      if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "macOS" ] || [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
         python3 --version
-        pip3 install --upgrade pip
+        python3 -m pip install --upgrade pip
       fi
 
 environment:
@@ -23,8 +23,16 @@ environment:
     secure: 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
 
 install:
-- pip install -r requirements.txt
-- pip install pillow flet pyinstaller
+- ps: |
+    if ($env:APPVEYOR_BUILD_WORKER_IMAGE -eq "Visual Studio 2019") {
+      python -m pip install -r requirements.txt
+      python -m pip install pillow flet pyinstaller
+    }
+- sh: |
+    if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "macOS" ] || [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
+      python3 -m pip install -r requirements.txt
+      python3 -m pip install pillow flet pyinstaller
+    }
 
 build_script:
 - flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
@@ -37,6 +45,18 @@ deploy:
   on:
     APPVEYOR_REPO_TAG: true
 
+# macOS bundle
+-
+  matrix:
+    only:
+    - image: macOS
+
+  after_build:
+  - tar -czvf teddy_osc-macos.tar.gz -C dist teddy_osc.app
+
+  artifacts:
+  - path: teddy_osc-macos.tar.gz
+  
 # Windows bundle
 for:
 -
@@ -49,18 +69,6 @@ for:
 
   artifacts:
   - path: teddy_osc-windows.zip
-
-# macOS bundle
--
-  matrix:
-    only:
-    - image: macOS
-
-  after_build:
-  - tar -czvf teddy_osc-macos.tar.gz -C dist teddy_osc.app
-
-  artifacts:
-  - path: teddy_osc-macos.tar.gz
 
 # Linux bundle
 -
