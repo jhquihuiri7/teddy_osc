@@ -3,7 +3,6 @@ import socket
 from pythonosc import dispatcher, osc_server
 from threading import Thread
 from utils import generate_plot
-from flet.plotly_chart import PlotlyChart
 import logging
 import time
 from collections import deque
@@ -152,7 +151,7 @@ def main(page: ft.Page):
         content=ft.Column(
             controls=[
                 ft.Text("OSC Message Visualization (Placeholder)", color=ft.Colors.CYAN_200, size=14),
-                PlotlyChart(generate_plot(), expand=True)
+                generate_plot()
             ]
         ),
         bgcolor=CARD_COLOR,
