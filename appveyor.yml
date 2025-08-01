@@ -45,13 +45,13 @@ build_script:
   # macOS (shell)
   - sh: |
       if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "macOS" ]; then
+        export PATH="$HOME/Library/Python/3.9/bin:$PATH"
         flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
       fi
 
   # Ubuntu (shell)
   - sh: |
       if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
-        export PATH="$HOME/Library/Python/3.9/bin:$PATH"
         flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
       fi
 
