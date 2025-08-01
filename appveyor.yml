@@ -41,6 +41,7 @@ build_script:
   # Ubuntu (shell)
   - sh: |
       if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
+        export PATH="/home/appveyor/.pyenv/versions/3.13.2/bin:$PATH"
         flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
       fi
 
