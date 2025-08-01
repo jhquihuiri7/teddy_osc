@@ -6,7 +6,7 @@ image:
 skip_branch_with_pr: true
 
 init:
-  - "SET PATH=C:\\Python310-x64;C:\\Python310-x64\\Scripts;%PATH%"
+  - "SET PATH=C:\\Python311-x64;C:\\Python311-x64\\Scripts;%PATH%"
   - "python --version"
   - "python -m pip install --upgrade pip"
 
