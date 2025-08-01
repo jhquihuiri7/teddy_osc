@@ -19,7 +19,7 @@ install:
 - pip install pillow flet pyinstaller
 
 build_script:
-- flet pack main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
+- flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
 
 test: off
 
