@@ -78,7 +78,7 @@ def main(page: ft.Page):
 
     common_ports = ft.Dropdown(
         width=160,
-        options=[ft.dropdown.Option(str(p)) for p in [3333, 8338]],
+        options=[ft.dropdown.Option(str(p)) for p in [3333, 8338, 8000, 9000]],
         value="3333",
         bgcolor=ft.Colors.BLUE_GREY_800,
         color=ft.Colors.WHITE,
