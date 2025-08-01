@@ -12,6 +12,11 @@ init:
         python --version
         python -m pip install --upgrade pip
       }
+  - bash: |
+      if [[ "$APPVEYOR_BUILD_WORKER_IMAGE" == "macOS" || "$APPVEYOR_BUILD_WORKER_IMAGE" == "Ubuntu" ]]; then
+        python3 --version
+        pip3 install --upgrade pip
+      fi
 
 environment:
   GITHUB_TOKEN:
