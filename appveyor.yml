@@ -39,7 +39,8 @@ build_script:
   # Windows (PowerShell)
   - ps: |
       if ($env:APPVEYOR_BUILD_WORKER_IMAGE -eq "Visual Studio 2019") {
-        flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
+        $output = flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025" 2>&1
+        Write-Output $output
       }
 
   # macOS (shell)
