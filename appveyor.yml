@@ -4,7 +4,11 @@ image:
 - Ubuntu
 
 skip_branch_with_pr: true
-stack: python 3.10
+
+init:
+  - "SET PATH=C:\\Python310-x64;C:\\Python310-x64\\Scripts;%PATH%"
+  - "python --version"
+  - "python -m pip install --upgrade pip"
 
 environment:
   GITHUB_TOKEN:
