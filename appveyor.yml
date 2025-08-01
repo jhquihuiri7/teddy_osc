@@ -36,7 +36,18 @@ install:
 
 
 build_script:
-- flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
+  # Windows
+  - ps: |
+      if ($env:APPVEYOR_BUILD_WORKER_IMAGE -eq "Visual Studio 2019") {
+        flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
+      }
+
+  # macOS/Linux
+  - sh: |
+      if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "macOS" ] || [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
+        export PATH="$HOME/Library/Python/3.9/bin:$PATH"
+        flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
+      fi
 
 test: off
 
