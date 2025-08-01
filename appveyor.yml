@@ -45,6 +45,7 @@ deploy:
   on:
     APPVEYOR_REPO_TAG: true
 
+for:
 # macOS bundle
 -
   matrix:
@@ -58,7 +59,6 @@ deploy:
   - path: teddy_osc-macos.tar.gz
   
 # Windows bundle
-for:
 -
   matrix:
     only:
