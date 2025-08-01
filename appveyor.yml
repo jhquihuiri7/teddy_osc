@@ -1,0 +1,63 @@
+image:
+- Visual Studio 2019
+- macOS
+- Ubuntu
+
+skip_branch_with_pr: true
+stack: python 3.10
+
+environment:
+  GITHUB_TOKEN:
+    secure: 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
+
+install:
+- pip install -r requirements.txt
+- pip install pillow flet pyinstaller
+
+build_script:
+- flet pack main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
+
+test: off
+
+deploy:
+  provider: GitHub
+  auth_token: $(GITHUB_TOKEN)
+  on:
+    APPVEYOR_REPO_TAG: true
+
+# Windows bundle
+for:
+-
+  matrix:
+    only:
+    - image: Visual Studio 2019
+
+  after_build:
+  - 7z a teddy_osc-windows.zip %CD%\dist\*.exe
+
+  artifacts:
+  - path: teddy_osc-windows.zip
+
+# macOS bundle
+-
+  matrix:
+    only:
+    - image: macOS
+
+  after_build:
+  - tar -czvf teddy_osc-macos.tar.gz -C dist teddy_osc.app
+
+  artifacts:
+  - path: teddy_osc-macos.tar.gz
+
+# Linux bundle
+-
+  matrix:
+    only:
+    - image: Ubuntu
+
+  after_build:
+  - tar -czvf teddy_osc-linux.tar.gz -C dist teddy_osc
+
+  artifacts:
+  - path: teddy_osc-linux.tar.gz
