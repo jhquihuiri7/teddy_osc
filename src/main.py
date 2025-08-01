@@ -241,4 +241,6 @@ def main(page: ft.Page):
     # Inicia el hilo que actualiza el log en la UI
     Thread(target=log_updater, daemon=True).start()
 
-ft.app(target=main)
+if __name__ == "__main__":
+    # Forzar modo desktop para evitar problemas
+    ft.app(target=main, view=ft.AppView.FLET_APP)
