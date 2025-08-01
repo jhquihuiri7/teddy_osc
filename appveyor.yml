@@ -23,16 +23,17 @@ environment:
     secure: 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
 
 install:
-- ps: |
-    if ($env:APPVEYOR_BUILD_WORKER_IMAGE -eq "Visual Studio 2019") {
-      python -m pip install -r requirements.txt
-      python -m pip install pillow flet pyinstaller
-    }
-- sh: |
-    if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "macOS" ] || [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
-      python3 -m pip install -r requirements.txt
-      python3 -m pip install pillow flet pyinstaller
-    }
+  - ps: |
+      if ($env:APPVEYOR_BUILD_WORKER_IMAGE -eq "Visual Studio 2019") {
+        python -m pip install -r requirements.txt
+        python -m pip install pillow flet pyinstaller
+      }
+  - sh: |
+      if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "macOS" ] || [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
+        python3 -m pip install -r requirements.txt
+        python3 -m pip install pillow flet pyinstaller
+      fi
+
 
 build_script:
 - flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
