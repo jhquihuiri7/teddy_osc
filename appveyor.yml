@@ -32,27 +32,12 @@ install:
       if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "macOS" ] || [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
         python3 -m pip install -r requirements.txt
         python3 -m pip install pillow flet pyinstaller
-        which flet
-        echo $PATH
+        find /home/appveyor/.pyenv/versions/3.13.2 -name "*flet*"
         ls -l $(python3 -m site --user-base)/bin/flet
       fi
 
 
 build_script:
-  # Windows (PowerShell)
-  - ps: |
-      if ($env:APPVEYOR_BUILD_WORKER_IMAGE -eq "Visual Studio 2019") {
-        $output = flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025" 2>&1
-        Write-Output $output
-      }
-
-  # macOS (shell)
-  - sh: |
-      if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "macOS" ]; then
-        export PATH="$HOME/Library/Python/3.9/bin:$PATH"
-        flet pack src/main.py --name teddy_osc --product-name teddy_osc --product-version "1.0.0" --copyright "Copyright (c) 2025"
-      fi
-
   # Ubuntu (shell)
   - sh: |
       if [ "$APPVEYOR_BUILD_WORKER_IMAGE" = "Ubuntu" ]; then
