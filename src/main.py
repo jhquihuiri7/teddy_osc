@@ -6,6 +6,7 @@ from utils import generate_plot
 import logging
 import time
 from collections import deque
+from datetime import datetime
 
 BACKGROUND_COLOR = "#111827"
 CARD_COLOR = "#1f2937"
@@ -19,6 +20,12 @@ log_buffer = deque(maxlen=MAX_LOG_LINES)
 osc_servers = {}
 log_box = None
 
+charts = []
+data_series_by_arg = {}  # Dict para guardar los deque de cada argumento
+max_points = 100
+chart_colors = ["#FF5733", "#33C1FF", "#75FF33", "#FF33A8", "#F3FF33", "#9D33FF"]
+channels = ["TP9", "Fp1", "Fp2", "TP10", "DRL", "REF"]
+
 # Función para obtener IP local
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -31,9 +38,19 @@ def get_local_ip():
 
 # Manejo de mensajes OSC
 def osc_handler(address, *args):
-    msg = f"{address} -> {args}"
+    timestamp = datetime.now().isoformat()
+    args_str = ', '.join(str(arg) for arg in args)
+    if address.startswith("/muse/eeg"):
+        msg = f"{timestamp},{args_str}"
+        try:
+            if len(args) >= 2:
+                y_values = [float(arg) for arg in args]
+                update_chart(timestamp, y_values)
+        except Exception as e:
+            logging.error(f"Error processing OSC data: {e}")
+
     log_buffer.append(msg)
-    with open("log.txt", "a") as file:
+    with open("egg_new.txt", "a") as file:
         file.write(msg + "\n")
 
 # Hilo que actualiza la UI desde el buffer
@@ -63,6 +80,45 @@ def stop_osc_server(port):
         osc_servers[port].shutdown()
         del osc_servers[port]
 
+def update_chart(timestamp, values):
+    if not charts:
+        return
+
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        x_label = dt.strftime("%H:%M:%S")
+    except:
+        x_label = timestamp
+
+    for i, y_value in enumerate(values):
+        if i not in data_series_by_arg:
+            data_series_by_arg[i] = deque(maxlen=max_points)
+
+        data_series_by_arg[i].append((x_label, y_value))
+
+        chart = charts[i]
+        chart.data_series = [
+            ft.LineChartData(
+                data_points=[
+                    ft.LineChartDataPoint(j, point[1])
+                    for j, point in enumerate(data_series_by_arg[i])
+                ],
+                stroke_width=2,
+                color=chart_colors[i],
+                curved=True,
+                stroke_cap_round=True,
+            )
+        ]
+        chart.bottom_axis.labels = [
+            ft.ChartAxisLabel(
+                j,
+                ft.Text(value=point[0], size=10, color=ft.Colors.WHITE)
+            )
+            for j, point in enumerate(data_series_by_arg[i]) if j % (max_points // 10) == 0
+        ]
+
+        chart.update()
+
 def main(page: ft.Page):
     page.title = "OSC Data Monitor"
     page.bgcolor = BACKGROUND_COLOR
@@ -70,7 +126,7 @@ def main(page: ft.Page):
     page.scroll = ft.ScrollMode.AUTO
     page.padding = CARD_PADDING
 
-    global log_box
+    global log_box, chart
     log_box = ft.Column(auto_scroll=True, expand=True, scroll=ft.ScrollMode.ADAPTIVE)
 
     ip_text = ft.Text(f"{get_local_ip()}", size=14, color="#7e8bc0", weight="bold")
@@ -143,21 +199,40 @@ def main(page: ft.Page):
         bgcolor=ft.Colors.BLACK,
         padding=10,
         border_radius=5,
-        height=300,
+        height=400,
         width=page.window.width / 2 - 80
     )
 
+    charts.clear()
+    chart_column = ft.Column()
+
+    for i in range(6):  # Número inicial de subplots esperados
+        ch = generate_plot()
+        charts.append(ch)
+        chart_column.controls.append(
+            ft.Row(
+                controls=[
+                    ft.Container(
+                        content=ch,
+                        bgcolor=CARD_COLOR,
+                        padding=ft.padding.all(0),
+                        border_radius=CARD_RADIUS,
+                        height=100,
+                        width=page.window.width / 2
+                    ),
+                    ft.Text(channels[i], color=chart_colors[i])
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        )
+
     osc_graph = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text("OSC Message Visualization (Placeholder)", color=ft.Colors.CYAN_200, size=14),
-                generate_plot()
-            ]
-        ),
+        content=chart_column,
         bgcolor=CARD_COLOR,
         padding=CARD_PADDING,
         border_radius=CARD_RADIUS,
-        height=460,
+        height=650,
         width=page.window.width / 2 - 40
     )
 

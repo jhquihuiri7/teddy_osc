@@ -161,3 +161,8 @@ cython_debug/
 
 # Flet
 storage/
+
+#logs
+*.csv
+*.txt
+*.log
