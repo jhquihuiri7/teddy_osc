@@ -7,6 +7,7 @@ import logging
 import time
 from collections import deque
 from datetime import datetime
+from preprocess import ChanelProcessor
 
 BACKGROUND_COLOR = "#111827"
 CARD_COLOR = "#1f2937"
@@ -20,13 +21,19 @@ log_buffer = deque(maxlen=MAX_LOG_LINES)
 osc_servers = {}
 log_box = None
 
-charts = []
-data_series_by_arg = {}  # Dict para guardar los deque de cada argumento
+# Variables para manejar los gráficos
+eeg_charts = []
+channel_charts = []
+active_charts = []  # Contendrá los gráficos activos actualmente
+eeg_data_series = {}
 max_points = 100
+channel_data_series = [deque(maxlen=max_points) for _ in range(5)]
 chart_colors = ["#FF5733", "#33C1FF", "#75FF33", "#FF33A8", "#F3FF33", "#9D33FF"]
-channels = ["TP9", "Fp1", "Fp2", "TP10", "DRL", "REF"]
+eeg_channels = ["TP9", "Fp1", "Fp2", "TP10", "DRL", "REF"]
+absolute_channels = ['delta', 'theta', 'alpha', 'beta', 'gamma']
+chart_number = 1
+chanelProcessor = ChanelProcessor()
 
-# Función para obtener IP local
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -36,24 +43,43 @@ def get_local_ip():
         s.close()
     return ip
 
-# Manejo de mensajes OSC
 def osc_handler(address, *args):
+    global chart_number
     timestamp = datetime.now().isoformat()
     args_str = ', '.join(str(arg) for arg in args)
+    msg = None
+
     if address.startswith("/muse/eeg"):
         msg = f"{timestamp},{args_str}"
         try:
             if len(args) >= 2:
+                chart_number = len(args)
                 y_values = [float(arg) for arg in args]
+                log_buffer.append(msg)
                 update_chart(timestamp, y_values)
         except Exception as e:
-            logging.error(f"Error processing OSC data: {e}")
+            logging.error(f"Error processing EGG data: {e}")
 
-    log_buffer.append(msg)
-    with open("egg_new.txt", "a") as file:
-        file.write(msg + "\n")
+    elif address.startswith("/muse/elements/"):
+        try:
+            # Procesamos los datos para obtener las 5 bandas
+            
+            data = chanelProcessor.process_data(args_str)
+            if data:
+                chart_number = 1
+                args_str = ','.join(str(arg) for arg in data)
+                msg = f"{timestamp},{args_str}"
+                # Convertimos los valores a float
+                y_values = [float(value) for value in data[:5]]  # Tomamos los primeros 5 valores
+                log_buffer.append(msg)
+                update_chart(timestamp, y_values, type="channels")
+        except Exception as e:
+            logging.error(f"Error processing Channels data: {e}")
 
-# Hilo que actualiza la UI desde el buffer
+    if msg:
+        with open("egg_new.txt", "a") as file:
+            file.write(msg + "\n")
+
 def log_updater():
     while True:
         if log_box and log_buffer:
@@ -80,44 +106,130 @@ def stop_osc_server(port):
         osc_servers[port].shutdown()
         del osc_servers[port]
 
-def update_chart(timestamp, values):
-    if not charts:
-        return
-
+def is_chart_ready(chart):
     try:
-        dt = datetime.fromisoformat(timestamp)
-        x_label = dt.strftime("%H:%M:%S")
+        return chart.page is not None
     except:
-        x_label = timestamp
+        return False
+    
+def update_chart(timestamp, values, type="eeg"):
+    if type == "eeg":
+        if not eeg_charts:
+            return
 
-    for i, y_value in enumerate(values):
-        if i not in data_series_by_arg:
-            data_series_by_arg[i] = deque(maxlen=max_points)
+        try:
+            dt = datetime.fromisoformat(timestamp)
+            x_label = dt.strftime("%H:%M:%S")
+        except:
+            x_label = timestamp
 
-        data_series_by_arg[i].append((x_label, y_value))
+        for i, y_value in enumerate(values):
+            if i not in eeg_data_series:
+                eeg_data_series[i] = deque(maxlen=max_points)
 
-        chart = charts[i]
-        chart.data_series = [
-            ft.LineChartData(
-                data_points=[
-                    ft.LineChartDataPoint(j, point[1])
-                    for j, point in enumerate(data_series_by_arg[i])
+            eeg_data_series[i].append((x_label, y_value))
+
+            if i < len(eeg_charts):
+                chart = eeg_charts[i]
+                if is_chart_ready(chart):
+                    chart.data_series = [
+                        ft.LineChartData(
+                            data_points=[
+                                ft.LineChartDataPoint(j, point[1])
+                                for j, point in enumerate(eeg_data_series[i])
+                            ],
+                            stroke_width=2,
+                            color=chart_colors[i],
+                            curved=True,
+                            stroke_cap_round=True,
+                        )
+                    ]
+                    chart.bottom_axis.labels = [
+                        ft.ChartAxisLabel(
+                            j,
+                            ft.Text(value=point[0], size=10, color=ft.Colors.WHITE)
+                        )
+                        for j, point in enumerate(eeg_data_series[i]) if j % (max_points // 10) == 0
+                    ]
+                    chart.update()
+
+
+    elif type == "channels":
+        if not channel_charts:
+            return
+
+        try:
+            dt = datetime.fromisoformat(timestamp)
+            x_label = dt.strftime("%H:%M:%S")
+        except:
+            x_label = timestamp
+
+        for i in range(5):
+            if i < len(values):
+                channel_data_series[i].append((x_label, values[i]))
+
+        chart = channel_charts[0]
+        if is_chart_ready(chart):
+            chart.data_series = [
+                ft.LineChartData(
+                    data_points=[
+                        ft.LineChartDataPoint(j, point[1])
+                        for j, point in enumerate(channel_data_series[i])
+                    ],
+                    stroke_width=2,
+                    color=chart_colors[i],
+                    curved=True,
+                    stroke_cap_round=True,
+                )
+                for i in range(5)
+            ]
+
+            chart.bottom_axis.labels = [
+                ft.ChartAxisLabel(
+                    j,
+                    ft.Text(value=point[0], size=10, color=ft.Colors.WHITE)
+                )
+                for j, point in enumerate(channel_data_series[0]) if j % (max_points // 10) == 0
+            ]
+            chart.update()
+
+
+def show_eeg_charts(e):
+    global active_charts
+    active_charts = eeg_charts
+    chart_column.controls.clear()
+    for i, ch in enumerate(eeg_charts):
+        chart_column.controls.append(
+            ft.Row(
+                controls=[
+                    ch,
+                    ft.Text(eeg_channels[i], color=chart_colors[i])
                 ],
-                stroke_width=2,
-                color=chart_colors[i],
-                curved=True,
-                stroke_cap_round=True,
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
-        ]
-        chart.bottom_axis.labels = [
-            ft.ChartAxisLabel(
-                j,
-                ft.Text(value=point[0], size=10, color=ft.Colors.WHITE)
-            )
-            for j, point in enumerate(data_series_by_arg[i]) if j % (max_points // 10) == 0
-        ]
+        )
+    e.page.update()
+    log_buffer.append("Mostrando gráficos EEG")
 
-        chart.update()
+def show_channel_charts(e):
+    global active_charts
+    active_charts = channel_charts
+    chart_column.controls.clear()
+    chart_column.controls.append(
+        ft.Column(
+            controls=[
+                channel_charts[0],
+                ft.Row(
+                    [ft.Text(ch, color=chart_colors[i]) 
+                     for i, ch in enumerate(absolute_channels)],
+                    alignment=ft.MainAxisAlignment.SPACE_EVENLY
+                )
+            ]
+        )
+    )
+    e.page.update()
+    log_buffer.append("Mostrando gráficos de canales")
 
 def main(page: ft.Page):
     page.title = "OSC Data Monitor"
@@ -126,7 +238,7 @@ def main(page: ft.Page):
     page.scroll = ft.ScrollMode.AUTO
     page.padding = CARD_PADDING
 
-    global log_box, chart
+    global log_box, chart_column, active_charts, eeg_charts, channel_charts
     log_box = ft.Column(auto_scroll=True, expand=True, scroll=ft.ScrollMode.ADAPTIVE)
 
     ip_text = ft.Text(f"{get_local_ip()}", size=14, color="#7e8bc0", weight="bold")
@@ -151,7 +263,7 @@ def main(page: ft.Page):
     def update_layout(e=None):
         page_width = page.window.width
         top_controls.width = page_width / 2 - 40
-        osc_graph.width = page_width / 2 - 40
+        osc_graph.width = page_width - 40
         live_log.width = page_width / 2 - 80
         page.update()
 
@@ -173,6 +285,69 @@ def main(page: ft.Page):
             listening_ports.options = [opt for opt in listening_ports.options if opt.key != str(port)]
             listening_ports.update()
             log_buffer.append(f"Stopped listening to port: {port}")
+
+    # Inicializar gráficos EEG y de canales
+    eeg_charts.clear()
+    channel_charts.clear()
+    for i in range(6):
+        eeg_charts.append(generate_plot())
+    channel_charts = [generate_plot(height=600)]
+    active_charts = eeg_charts
+    
+    chart_column = ft.Column()
+    for i, ch in enumerate(eeg_charts):
+        chart_column.controls.append(
+            ft.Row(
+                controls=[
+                    ch,
+                    ft.Text(eeg_channels[i], color=chart_colors[i])
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        )
+
+    eeg_button = ft.ElevatedButton(
+        "EEG",
+        bgcolor="#4f46e5",
+        color="white",
+        on_click=show_eeg_charts,
+        style=ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=CARD_RADIUS),
+            padding=BUTTON_PADDING
+        )
+    )
+
+    channel_button = ft.ElevatedButton(
+        "CHANNELS",
+        bgcolor="#374151",
+        color="white",
+        on_click=show_channel_charts,
+        style=ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=CARD_RADIUS),
+            padding=BUTTON_PADDING
+        )
+    )
+
+    def update_button_styles(active_button):
+        if active_button == "eeg":
+            eeg_button.bgcolor = "#4f46e5"
+            channel_button.bgcolor = "#374151"
+        else:
+            eeg_button.bgcolor = "#374151"
+            channel_button.bgcolor = "#4f46e5"
+        page.update()
+
+    def show_eeg_charts_wrapper(e):
+        show_eeg_charts(e)
+        update_button_styles("eeg")
+
+    def show_channel_charts_wrapper(e):
+        show_channel_charts(e)
+        update_button_styles("channel")
+
+    eeg_button.on_click = show_eeg_charts_wrapper
+    channel_button.on_click = show_channel_charts_wrapper
 
     top_controls = ft.Container(
         content=ft.Column([
@@ -199,61 +374,28 @@ def main(page: ft.Page):
         bgcolor=ft.Colors.BLACK,
         padding=10,
         border_radius=5,
-        height=400,
+        height=110,
         width=page.window.width / 2 - 80
     )
 
-    charts.clear()
-    chart_column = ft.Column()
-
-    for i in range(6):  # Número inicial de subplots esperados
-        ch = generate_plot()
-        charts.append(ch)
-        chart_column.controls.append(
-            ft.Row(
-                controls=[
-                    ft.Container(
-                        content=ch,
-                        bgcolor=CARD_COLOR,
-                        padding=ft.padding.all(0),
-                        border_radius=CARD_RADIUS,
-                        height=100,
-                        width=page.window.width / 2
-                    ),
-                    ft.Text(channels[i], color=chart_colors[i])
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            )
-        )
+    buttons_row = ft.Row(
+        controls=[
+            eeg_button,
+            channel_button
+        ],
+        alignment=ft.MainAxisAlignment.CENTER,
+        spacing=20
+    )
 
     osc_graph = ft.Container(
-        content=chart_column,
+        content=ft.Column([
+            chart_column
+        ]),
         bgcolor=CARD_COLOR,
         padding=CARD_PADDING,
         border_radius=CARD_RADIUS,
-        height=650,
-        width=page.window.width / 2 - 40
-    )
-
-    is_downloading = False
-
-    def toggle_download(e):
-        nonlocal is_downloading
-        is_downloading = not is_downloading
-        download_button.text = "Stop Downloading" if is_downloading else "Start Downloading"
-        log_buffer.append("Started downloading log..." if is_downloading else "Stopped downloading log.")
-        download_button.update()
-
-    download_button = ft.CupertinoButton(
-        "Start Downloading",
-        bgcolor=ft.Colors.GREEN_600,
-        color="white",
-        icon=ft.Icons.DOWNLOAD,
-        icon_color="white",
-        border_radius=CARD_RADIUS,
-        padding=BUTTON_PADDING,
-        on_click=toggle_download
+        height=700,
+        width=page.window.width - 40
     )
 
     page.on_resized = update_layout
@@ -277,44 +419,31 @@ def main(page: ft.Page):
                             ft.Container(content=ip_text, alignment=ft.alignment.center_right, expand=True, bgcolor="#374151", padding=5, border_radius=5)
                         ]
                     ),
-
+                    buttons_row
                 ], alignment="spaceBetween"),
             ),
+            ft.Container(
+                osc_graph
+            ),
             ft.Row([
+                top_controls,
                 ft.Container(
+                    bgcolor=CARD_COLOR,
+                    padding=CARD_PADDING,
+                    border_radius=CARD_RADIUS,
                     content=ft.Column(
                         controls=[
-                            top_controls,
-                            ft.Container(
-                                bgcolor=CARD_COLOR,
-                                padding=CARD_PADDING,
-                                border_radius=CARD_RADIUS,
-                                content=ft.Column(
-                                    controls=[
-                                        ft.Text("Live Log", size=16, color=ft.Colors.WHITE),
-                                        live_log,
-                                    ]
-                                )
-                            )
+                            ft.Text("Live Log", size=16, color=ft.Colors.WHITE),
+                            live_log,
                         ]
-                    ),
-                ),
-                ft.Container(
-                    content=ft.Column(
-                        controls=[
-                            osc_graph,
-                            ft.Container(content=download_button, alignment=ft.alignment.center_right, padding=10)
-                        ]
-                    ),
-                ),
-
+                    )
+                )
             ], alignment="spaceBetween", vertical_alignment="start", spacing=20),
         ], spacing=20, expand=True),
     )
 
-    # Inicia el hilo que actualiza el log en la UI
+    update_button_styles("eeg")
     Thread(target=log_updater, daemon=True).start()
 
 if __name__ == "__main__":
-    # Forzar modo desktop para evitar problemas
     ft.app(target=main, view=ft.AppView.FLET_APP)

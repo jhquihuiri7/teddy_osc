@@ -2,6 +2,7 @@ import re
 from datetime import datetime, timedelta
 import pandas as pd
 import matplotlib.pyplot as plt
+import time
 
 def preprocess_log_to_csv():
     """
@@ -78,4 +79,48 @@ def plot_eeg_data():
     plt.tight_layout()
     plt.show()
 
-plot_eeg_data()
+class ChanelProcessor:
+    def __init__(self):
+        self.buffer = []
+        self.current_record = []
+        self.expecting_data = False
+        self.data_count = 0
+
+    def process_data(self, data):
+        # Si recibimos una lista de 3 elementos (ej. "1.0,1.0,1.0")
+        if ',' in data:
+            parts = data.split(',')
+            if len(parts) == 3:  # Fin del registro
+                if self.current_record:
+                    self.current_record = []
+                self.expecting_data = False
+                self.data_count = 0
+            return
+        
+        # Convertimos el dato a número
+        try:
+            num = float(data)
+            # Si es entero (como 1.0 lo consideramos como entero)
+            if num.is_integer():
+                num = int(num)
+        except ValueError:
+            return  # No es un número, lo ignoramos
+        
+        # Si es un entero, comenzamos a esperar los siguientes 5 elementos
+        if isinstance(num, int):
+            self.expecting_data = True
+            self.data_count = 0
+            return
+
+        # Si estamos esperando datos y es un float
+        if self.expecting_data and isinstance(num, float):
+            self.current_record.append(num)
+            self.data_count += 1
+            
+            # Si ya tenemos 5 elementos, guardamos el registro
+            if self.data_count == 5:
+                self.expecting_data = False
+                data = self.current_record.copy()
+                self.current_record = []   
+                self.data_count = 0
+                return data
