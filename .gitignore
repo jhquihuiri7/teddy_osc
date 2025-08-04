@@ -166,3 +166,4 @@ storage/
 *.csv
 *.txt
 *.log
+logs/*.csv
