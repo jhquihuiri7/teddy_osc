@@ -1,3 +1,17 @@
+"""
+OSC Data Monitor Application
+
+This application provides a graphical interface for monitoring and visualizing OSC (Open Sound Control) data,
+particularly from EEG devices like Muse headsets. It includes real-time charting of EEG signals and frequency bands,
+logging capabilities, and network configuration options.
+
+Key Features:
+- Real-time visualization of EEG data and frequency bands (delta, theta, alpha, beta, gamma)
+- Multiple OSC port listening capability
+- Data logging to files with buffered writing
+- Responsive UI with dark theme
+"""
+
 import flet as ft
 import socket
 from pythonosc import dispatcher, osc_server
@@ -9,7 +23,10 @@ import time
 from collections import deque
 from datetime import datetime
 from preprocess import ChanelProcessor
+from processor import BufferedFileWriter
+import threading
 
+# UI Configuration Constants
 BACKGROUND_COLOR = "#111827"
 CARD_COLOR = "#1f2937"
 CARD_RADIUS = 10
@@ -17,15 +34,16 @@ CARD_PADDING = ft.padding.symmetric(horizontal=20, vertical=10)
 BUTTON_PADDING = ft.padding.symmetric(horizontal=20, vertical=0)
 ROW_ALIGNMENT = ft.MainAxisAlignment.SPACE_BETWEEN
 
+# Logging Configuration
 MAX_LOG_LINES = 1000
 log_buffer = deque(maxlen=MAX_LOG_LINES)
 osc_servers = {}
 log_box = None
 
-# Variables para manejar los gráficos
+# Chart Configuration Variables
 eeg_charts = []
 channel_charts = []
-active_charts = []  # Contendrá los gráficos activos actualmente
+active_charts = []  # Contains currently active charts
 eeg_data_series = {}
 max_points = 100
 channel_data_series = [deque(maxlen=max_points) for _ in range(5)]
@@ -33,10 +51,15 @@ chart_colors = ["#FF5733", "#33C1FF", "#75FF33", "#FF33A8", "#F3FF33", "#9D33FF"
 eeg_channels = ["TP9", "Fp1", "Fp2", "TP10", "DRL", "REF"]
 absolute_channels = ['delta', 'theta', 'alpha', 'beta', 'gamma']
 chart_number = 1
+
+# Initialize data processors and writers
 chanelProcessor = ChanelProcessor()
 metricsCalculator = MetricsCalculator()
+eeg_writer = BufferedFileWriter("eeg", header=eeg_channels)
+channels_writer = BufferedFileWriter("channels", header=absolute_channels)
 
 def get_local_ip():
+    """Get the local IP address of the machine"""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
@@ -45,49 +68,60 @@ def get_local_ip():
         s.close()
     return ip
 
+def start_flush_threads():
+    """Start periodic flush threads for file writers"""
+    def flush_periodically(writer, interval=5):
+        while True:
+            time.sleep(interval)
+            writer.flush()
+    
+    # Thread for EEG data
+    threading.Thread(target=flush_periodically, args=(eeg_writer,), daemon=True).start()
+    # Thread for Channel data
+    threading.Thread(target=flush_periodically, args=(channels_writer,), daemon=True).start()
+
 def osc_handler(address, *args):
+    """Handle incoming OSC messages"""
     global chart_number
     timestamp = datetime.now().isoformat()
     args_str = ','.join(str(arg) for arg in args)
     msg = None
 
     if address.startswith("/muse/eeg"):
-        msg = f"{timestamp},{args_str}"
+        msg = f"{timestamp},{args_str}\n"
         try:
             if len(args) >= 2:
                 chart_number = len(args)
                 y_values = [float(arg) for arg in args]
                 log_buffer.append(msg)
-                with open("eeg.csv", "a") as file:
-                    file.write(msg + "\n")
+                eeg_writer.write(msg)
                 update_chart(timestamp, y_values)
         except Exception as e:
             logging.error(f"Error processing EGG data: {e}")
 
     elif address.startswith("/muse/elements/"):
         try:
-            # Procesamos los datos para obtener las 5 bandas
+            # Process data to get the 5 frequency bands
             channel = address.split("/")[-1]
             data = chanelProcessor.process_data(args_str, channel)
             if data:
                 chart_number = 1
                 args_str = ','.join(str(arg) for arg in data)
-                msg = f"{timestamp},{args_str}"
-                # Convertimos los valores a float
-                y_values = [float(value) for value in data[:5]]  # Tomamos los primeros 5 valores
+                msg = f"{timestamp},{args_str}\n"
+                # Convert values to float
+                y_values = [float(value) for value in data[:5]]  # Take first 5 values
                 result = metricsCalculator.process(
                     timestamp=timestamp, 
                     delta=y_values[0], theta=y_values[1], alpha=y_values[2], beta=y_values[3], gamma=y_values[4]
                     )
                 log_buffer.append(msg)
-                with open("channels.csv", "a") as file:
-                    file.write(msg + "\n")
+                channels_writer.write(msg)
                 update_chart(timestamp, y_values, type="channels")
         except Exception as e:
             logging.error(f"Error processing Channels data: {e}")
 
-
 def log_updater():
+    """Update the log display periodically"""
     while True:
         if log_box and log_buffer:
             while log_buffer:
@@ -99,6 +133,7 @@ def log_updater():
         time.sleep(0.2)
 
 def start_osc_server(port):
+    """Start an OSC server on the specified port"""
     if port in osc_servers:
         return
     disp = dispatcher.Dispatcher()
@@ -109,17 +144,20 @@ def start_osc_server(port):
     osc_servers[port] = server
 
 def stop_osc_server(port):
+    """Stop the OSC server on the specified port"""
     if port in osc_servers:
         osc_servers[port].shutdown()
         del osc_servers[port]
 
 def is_chart_ready(chart):
+    """Check if a chart is ready for updates"""
     try:
         return chart.page is not None
     except:
         return False
     
 def update_chart(timestamp, values, type="eeg"):
+    """Update the charts with new data"""
     if type == "eeg":
         if not eeg_charts:
             return
@@ -160,7 +198,6 @@ def update_chart(timestamp, values, type="eeg"):
                     ]
                     chart.update()
 
-
     elif type == "channels":
         if not channel_charts:
             return
@@ -200,8 +237,8 @@ def update_chart(timestamp, values, type="eeg"):
             ]
             chart.update()
 
-
 def show_eeg_charts(e):
+    """Display EEG charts"""
     global active_charts
     active_charts = eeg_charts
     chart_column.controls.clear()
@@ -217,9 +254,10 @@ def show_eeg_charts(e):
             )
         )
     e.page.update()
-    log_buffer.append("Mostrando gráficos EEG")
+    log_buffer.append("Showing EEG charts")
 
 def show_channel_charts(e):
+    """Display frequency band charts"""
     global active_charts
     active_charts = channel_charts
     chart_column.controls.clear()
@@ -236,9 +274,10 @@ def show_channel_charts(e):
         )
     )
     e.page.update()
-    log_buffer.append("Mostrando gráficos de canales")
+    log_buffer.append("Showing channel charts")
 
 def main(page: ft.Page):
+    """Main application function"""
     page.title = "OSC Data Monitor"
     page.bgcolor = BACKGROUND_COLOR
     page.horizontal_alignment = "center"
@@ -268,6 +307,7 @@ def main(page: ft.Page):
     )
 
     def update_layout(e=None):
+        """Update UI layout on window resize"""
         page_width = page.window.width
         top_controls.width = page_width / 2 - 40
         osc_graph.width = page_width - 40
@@ -275,6 +315,7 @@ def main(page: ft.Page):
         page.update()
 
     def add_port_click(e):
+        """Handle add port button click"""
         try:
             port = int(common_ports.value)
             start_osc_server(port)
@@ -286,6 +327,7 @@ def main(page: ft.Page):
             log_buffer.append(f"Error: {ex}")
 
     def stop_port_click(e):
+        """Handle stop port button click"""
         if listening_ports.value:
             port = int(listening_ports.value)
             stop_osc_server(port)
@@ -293,7 +335,7 @@ def main(page: ft.Page):
             listening_ports.update()
             log_buffer.append(f"Stopped listening to port: {port}")
 
-    # Inicializar gráficos EEG y de canales
+    # Initialize EEG and channel charts
     eeg_charts.clear()
     channel_charts.clear()
     for i in range(6):
@@ -314,6 +356,7 @@ def main(page: ft.Page):
             )
         )
 
+    # UI Elements
     eeg_button = ft.ElevatedButton(
         "EEG",
         bgcolor="#4f46e5",
@@ -337,6 +380,7 @@ def main(page: ft.Page):
     )
 
     def update_button_styles(active_button):
+        """Update button styles based on which is active"""
         if active_button == "eeg":
             eeg_button.bgcolor = "#4f46e5"
             channel_button.bgcolor = "#374151"
@@ -346,10 +390,12 @@ def main(page: ft.Page):
         page.update()
 
     def show_eeg_charts_wrapper(e):
+        """Wrapper for EEG chart display"""
         show_eeg_charts(e)
         update_button_styles("eeg")
 
     def show_channel_charts_wrapper(e):
+        """Wrapper for channel chart display"""
         show_channel_charts(e)
         update_button_styles("channel")
 
@@ -407,6 +453,7 @@ def main(page: ft.Page):
 
     page.on_resized = update_layout
 
+    # Build the main UI layout
     page.add(
         ft.Column([
             ft.Container(
@@ -451,6 +498,8 @@ def main(page: ft.Page):
 
     update_button_styles("eeg")
     Thread(target=log_updater, daemon=True).start()
+    
 
 if __name__ == "__main__":
+    start_flush_threads()
     ft.app(target=main, view=ft.AppView.FLET_APP)

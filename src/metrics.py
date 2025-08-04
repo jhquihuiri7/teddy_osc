@@ -1,5 +1,8 @@
 from collections import deque
 from datetime import datetime
+from processor import BufferedFileWriter
+import threading
+import time
 
 class MetricsCalculator:
     """A class for calculating metrics over a sliding time window.
@@ -18,6 +21,17 @@ class MetricsCalculator:
         self.data_window = deque()
         self.last_calculation_time = None
         self.window_seconds = window_seconds
+        self.metrics = ['bar', 'hai', 'tar', 'tbr', 'wi']
+        self.writer = BufferedFileWriter("metrics", header=self.metrics)
+        self.start_flush_threads()
+
+    def start_flush_threads(self):
+        """Starts a thread to periodically flush the buffered data to disk."""
+        def flush_periodically(writer, interval=5):
+            while True:
+                time.sleep(interval)
+                writer.flush()
+        threading.Thread(target=flush_periodically, args=(self.writer,), daemon=True).start()
 
     def process(self, timestamp: str, alpha: float, beta: float, gamma: float, theta: float, delta: float):
         """Process a new data point and calculate metrics if needed.
@@ -75,9 +89,9 @@ class MetricsCalculator:
                 wi = (mean_delta + mean_theta) / mean_alpha if mean_alpha != 0 else None
 
                 # Save to file
-                with open("metrics.csv", "a") as file:
-                    file.write(f"{now},{bar},{hai},{tar},{tbr},{wi}\n")
-
+                msg = f"{now},{bar},{hai},{tar},{tbr},{wi}\n"
+                self.writer.write(msg)
+                
                 self.last_calculation_time = now
                 return bar, hai, tar, tbr, wi
 
