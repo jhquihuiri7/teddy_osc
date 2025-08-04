@@ -1,126 +1,88 @@
-import re
-from datetime import datetime, timedelta
-import pandas as pd
-import matplotlib.pyplot as plt
-import time
-
-def preprocess_log_to_csv():
-    """
-    Preprocesses a log file to extract EEG and elements data, 
-    writing them to separate CSV files with timestamps.
-    """
-    
-    # Archivos de entrada y salida
-    input_file = 'log.txt'
-    output_eeg_csv = 'eeg_data.csv'
-    output_elements_csv = 'elements_data.csv'
-
-    # Expresión regular para extraer números
-    pattern = r'[-+]?\d*\.\d+|\d+'
-
-    # Obtener el timestamp actual y configurar el incremento
-    start_time = datetime.now()
-    timestamp = start_time
-
-    # Procesamiento
-    with open(input_file, 'r') as file, \
-         open(output_eeg_csv, 'w') as eeg_csv, \
-         open(output_elements_csv, 'w') as elements_csv:
-
-        # Escribir encabezados (incluyendo columna 'timestamp')
-        eeg_csv.write('timestamp,TP9,Fp1,Fp2,TP10,DRL,REF\n')  # EEG + timestamp
-        elements_csv.write('data\n')                          # Elements (sin cambios)
-
-        for line in file:
-            line = line.strip()
-
-            # Procesar líneas /muse/eeg
-            if line.startswith('/muse/eeg'):
-                numbers = re.findall(pattern, line.split('->')[1])
-                # Formato: timestamp,TP9,Fp1,Fp2,TP10,DRL,REF
-                eeg_csv.write(f'"{timestamp.isoformat()}",{",".join(numbers)}\n')
-                timestamp += timedelta(seconds=1)  # Incremento de 1 segundo
-
-            # Procesar líneas /muse/elements/ (sin timestamp)
-            elif line.startswith('/muse/elements/'):
-                numbers = re.findall(pattern, line.split('->')[1])
-                elements_csv.write(','.join(numbers) + '\n')
-
-    print("¡Archivos CSV generados con timestamps!")
-    print(f"- EEG: {output_eeg_csv} (columnas: timestamp, TP9, Fp1, Fp2, TP10, DRL, REF)")
-    print(f"- Elements: {output_elements_csv} (columna: data)")
-
-def plot_eeg_data():
-    """
-    Genera subplots verticales para cada canal EEG.
-    """
-    # Cargar datos
-    df = pd.read_csv("eeg_data.csv")
-    df = df.head(500)
-    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-
-    # Canales a graficar
-    channels = ['TP9', 'Fp1', 'Fp2', 'TP10', 'DRL', 'REF']
-    num_channels = len(channels)
-    
-    # Crear figura con subplots verticales
-    fig, axes = plt.subplots(nrows=num_channels, ncols=1, figsize=(15, 10), sharex=True)
-    fig.suptitle('EEG Signals Over Time', fontsize=16, y=1.02)
-
-    # Graficar cada canal en su propio subplot
-    for i, channel in enumerate(channels):
-        ax = axes[i]
-        ax.plot(df['timestamp'], df[channel], color='blue', linewidth=1)
-        ax.set_ylabel(channel, rotation=0, ha='right', va='center')
-        ax.grid(True)
-
-    # Configuración común
-    plt.xlabel('Timestamp')
-    plt.tight_layout()
-    plt.show()
-
 class ChanelProcessor:
+    """
+    Processes and buffers EEG frequency band data from Muse headset.
+    
+    The class handles:
+    - Buffering of 5 different frequency bands (delta, theta, alpha, beta, gamma)
+    - Detection of complete data records (when all 5 bands are received)
+    - Data validation and type conversion
+    - State management for data reception
+    
+    Usage:
+    1. Create instance: processor = ChanelProcessor()
+    2. Feed data: result = processor.process_data(data, channel_name)
+    3. Complete records return as lists, otherwise returns None
+    """
+    
     def __init__(self):
-        self.buffer = []
+        """Initializes the processor with empty buffers and state variables."""
+        self.buffer = [None] * 5
+        self.channel_received = set()
         self.current_record = []
         self.expecting_data = False
         self.data_count = 0
+        self.channel_dict = {
+            'delta_absolute': 0,
+            'theta_absolute': 1,
+            'alpha_absolute': 2,
+            'beta_absolute': 3,
+            'gamma_absolute': 4
+        }
 
-    def process_data(self, data):
-        # Si recibimos una lista de 3 elementos (ej. "1.0,1.0,1.0")
+
+    def process_data(self, data, channel=None):
+        """
+        Processes incoming EEG frequency band data.
+        
+        Args:
+            data (str): The data string to process (can be single value or comma-separated)
+            channel (str, optional): The frequency band channel name
+            
+        Returns:
+            list or None: Returns complete 5-element record when all bands are received,
+                          otherwise returns None
+                          
+        Handles:
+        - Comma-separated values (resets state if 3 values received)
+        - Integer markers (signals start of new data sequence)
+        - Floating point values (stores in appropriate buffer position)
+        - Automatic record completion when all 5 bands are received
+        """
+        # If we receive a list of 3 elements (e.g. "1.0,1.0,1.0")
         if ',' in data:
             parts = data.split(',')
-            if len(parts) == 3:  # Fin del registro
+            if len(parts) == 3:  # End of record
                 if self.current_record:
                     self.current_record = []
                 self.expecting_data = False
                 self.data_count = 0
             return
         
-        # Convertimos el dato a número
+        # Convert the data to a number
         try:
             num = float(data)
-            # Si es entero (como 1.0 lo consideramos como entero)
+            # If it's an integer (we consider 1.0 as integer)
             if num.is_integer():
                 num = int(num)
         except ValueError:
-            return  # No es un número, lo ignoramos
+            return  # Not a number, we ignore it
         
-        # Si es un entero, comenzamos a esperar los siguientes 5 elementos
+        # If it's an integer, we start expecting the next 5 elements
         if isinstance(num, int):
             self.expecting_data = True
             self.data_count = 0
             return
 
-        # Si estamos esperando datos y es un float
+        # If we're expecting data and it's a float
         if self.expecting_data and isinstance(num, float):
-            self.current_record.append(num)
-            self.data_count += 1
+            index = self.channel_dict[channel]
+            self.buffer[index] = num
+            self.channel_received.add(channel)
             
-            # Si ya tenemos 5 elementos, guardamos el registro
-            if self.data_count == 5:
+            # If we already have 5 elements, we save the record
+            if len(self.channel_received) == 5:
                 self.expecting_data = False
-                data = self.current_record.copy()
-                self.current_record = []   
-                self.data_count = 0
+                data = self.buffer.copy()
+                self.buffer = [None] * 5
+                self.channel_received.clear()
                 return data

@@ -3,6 +3,7 @@ import socket
 from pythonosc import dispatcher, osc_server
 from threading import Thread
 from utils import generate_plot
+from metrics import MetricsCalculator
 import logging
 import time
 from collections import deque
@@ -33,6 +34,7 @@ eeg_channels = ["TP9", "Fp1", "Fp2", "TP10", "DRL", "REF"]
 absolute_channels = ['delta', 'theta', 'alpha', 'beta', 'gamma']
 chart_number = 1
 chanelProcessor = ChanelProcessor()
+metricsCalculator = MetricsCalculator()
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -46,7 +48,7 @@ def get_local_ip():
 def osc_handler(address, *args):
     global chart_number
     timestamp = datetime.now().isoformat()
-    args_str = ', '.join(str(arg) for arg in args)
+    args_str = ','.join(str(arg) for arg in args)
     msg = None
 
     if address.startswith("/muse/eeg"):
@@ -56,6 +58,8 @@ def osc_handler(address, *args):
                 chart_number = len(args)
                 y_values = [float(arg) for arg in args]
                 log_buffer.append(msg)
+                with open("eeg.csv", "a") as file:
+                    file.write(msg + "\n")
                 update_chart(timestamp, y_values)
         except Exception as e:
             logging.error(f"Error processing EGG data: {e}")
@@ -63,22 +67,25 @@ def osc_handler(address, *args):
     elif address.startswith("/muse/elements/"):
         try:
             # Procesamos los datos para obtener las 5 bandas
-            
-            data = chanelProcessor.process_data(args_str)
+            channel = address.split("/")[-1]
+            data = chanelProcessor.process_data(args_str, channel)
             if data:
                 chart_number = 1
                 args_str = ','.join(str(arg) for arg in data)
                 msg = f"{timestamp},{args_str}"
                 # Convertimos los valores a float
                 y_values = [float(value) for value in data[:5]]  # Tomamos los primeros 5 valores
+                result = metricsCalculator.process(
+                    timestamp=timestamp, 
+                    delta=y_values[0], theta=y_values[1], alpha=y_values[2], beta=y_values[3], gamma=y_values[4]
+                    )
                 log_buffer.append(msg)
+                with open("channels.csv", "a") as file:
+                    file.write(msg + "\n")
                 update_chart(timestamp, y_values, type="channels")
         except Exception as e:
             logging.error(f"Error processing Channels data: {e}")
 
-    if msg:
-        with open("egg_new.txt", "a") as file:
-            file.write(msg + "\n")
 
 def log_updater():
     while True:
