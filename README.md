@@ -41,16 +41,21 @@ To run the Teddy OSC Data Monitor locally, follow these steps:
 
 1.  **Clone the repository:**
     ```sh
-    git clone <repository-url>
-    cd <repository-directory>
+    git clone https://github.com/jhquihuiri7/teddy_osc.git
+    cd teddy_osc
     ```
 
 2.  **Create a virtual environment:**
-    ```sh
-    python -m venv venv
-    ```
+    -   **On Windows:**
+        ```sh
+        python -m venv venv
+        ```
+    -   **On Linux/macOS:**
+        ```sh
+        python3 -m venv venv
+        ```
 
-3.  **Activate the virtual environment:**
+4.  **Activate the virtual environment:**
     -   **On Windows:**
         ```sh
         venv\Scripts\activate
@@ -60,13 +65,13 @@ To run the Teddy OSC Data Monitor locally, follow these steps:
         source venv/bin/activate
         ```
 
-4.  **Install dependencies:**
+5.  **Install dependencies:**
     The project dependencies are listed in `requirements.txt`. Install them using pip:
     ```sh
     pip install -r requirements.txt
     ```
 
-5.  **Run the application:**
+6.  **Run the application:**
     ```sh
     flet run src/main.py
     ```
