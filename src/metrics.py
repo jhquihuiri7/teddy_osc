@@ -21,7 +21,7 @@ class MetricsCalculator:
         self.data_window = deque()
         self.last_calculation_time = None
         self.window_seconds = window_seconds
-        self.metrics = ['bar', 'hai', 'tar', 'tbr', 'wi']
+        self.metrics = ['bar', 'hai', 'tar', 'tbr', 'wi', 'absolute_alpha', 'absolute_beta', 'absolute_gamma', 'absolute_theta', 'absolute_delta']
         self.writer = BufferedFileWriter("metrics", header=self.metrics)
         self.start_flush_threads()
 
@@ -89,7 +89,7 @@ class MetricsCalculator:
                 wi = (mean_delta + mean_theta) / mean_alpha if mean_alpha != 0 else None
 
                 # Save to file
-                msg = f"{now},{bar},{hai},{tar},{tbr},{wi}\n"
+                msg = f"{now},{bar},{hai},{tar},{tbr},{wi},{mean_alpha},{mean_beta},{mean_gamma},{mean_theta},{mean_delta}\n"
                 self.writer.write(msg)
                 
                 self.last_calculation_time = now
