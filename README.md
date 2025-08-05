@@ -84,4 +84,4 @@ Once the application is running:
 2.  Use the "Connection Settings" panel to add the port your OSC source is broadcasting on (e.g., 3333, 8338). Click "Add Port".
 3.  The application will start listening for data. You should see the "Live Log" updating with incoming messages.
 4.  The charts will display the data in real-time. You can switch between the raw **EEG** signal view and the processed **CHANNELS** (frequency bands) view using the buttons at the top.
-5.  Data is automatically logged into `.csv` files in the `eeg_data` and `channels_data` directories, created in the root of the project.
+5.  Data is automatically logged into `.csv` files in the `eeg_data` and `channels_data` directories, created in the root of the project..
