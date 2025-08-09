@@ -42,7 +42,7 @@ metricsCalculator = MetricsCalculator()
 buffered_eeg_data = {}
 buffered_channel_data = [[] for _ in range(5)]
 buffered_metrics_data = [[] for _ in range(5)]  # Buffer para métricas
-update_interval_seconds = 1.0
+update_interval_seconds = 2.0
 
 def buffer_eeg_data(timestamp, values):
     for i, value in enumerate(values):
