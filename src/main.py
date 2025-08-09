@@ -23,10 +23,12 @@ osc_servers = {}
 # Chart Configuration Variables
 eeg_charts = []
 channel_charts = []
+metrics_charts = []  # Nuevo arreglo para métricas
 active_charts = []
 eeg_data_series = {}
 max_points = 100
 channel_data_series = [deque(maxlen=max_points) for _ in range(5)]
+metrics_data_series = [deque(maxlen=max_points) for _ in range(5)]  # 5 métricas
 chart_colors = ["#FF5733", "#33C1FF", "#75FF33", "#FF33A8", "#F3FF33", "#9D33FF"]
 eeg_channels = ["TP9", "Fp1", "Fp2", "TP10", "DRL", "REF"]
 absolute_channels = ['delta', 'theta', 'alpha', 'beta', 'gamma']
@@ -39,6 +41,7 @@ metricsCalculator = MetricsCalculator()
 # Buffered data storage
 buffered_eeg_data = {}
 buffered_channel_data = [[] for _ in range(5)]
+buffered_metrics_data = [[] for _ in range(5)]  # Buffer para métricas
 update_interval_seconds = 1.0
 
 def buffer_eeg_data(timestamp, values):
@@ -51,7 +54,12 @@ def buffer_channel_data(timestamp, values):
     for i in range(min(len(values), 5)):
         buffered_channel_data[i].append((timestamp, values[i]))
 
+def buffer_metrics_data(timestamp, values):
+    for i in range(min(len(values), 5)):
+        buffered_metrics_data[i].append((timestamp, values[i]))
+
 def update_charts_periodically():
+    # EEG Charts
     for i in range(len(eeg_charts)):
         if i in buffered_eeg_data:
             new_points = buffered_eeg_data[i]
@@ -84,6 +92,7 @@ def update_charts_periodically():
                 ]
                 chart.update()
 
+    # Channel Charts
     updated = False
     for i in range(5):
         if buffered_channel_data[i]:
@@ -116,6 +125,42 @@ def update_charts_periodically():
                     ft.Text(value=p[0], size=10, color=ft.Colors.WHITE)
                 )
                 for j, p in enumerate(channel_data_series[0]) if j % (max_points // 10) == 0
+            ]
+            chart.update()
+
+    # Metrics Charts
+    metrics_updated = False
+    for i in range(5):
+        if buffered_metrics_data[i]:
+            for point in buffered_metrics_data[i]:
+                dt = datetime.fromisoformat(point[0])
+                label = dt.strftime("%H:%M:%S")
+                metrics_data_series[i].append((label, point[1]))
+            buffered_metrics_data[i] = []
+            metrics_updated = True
+
+    if metrics_updated and metrics_charts:
+        chart = metrics_charts[0]
+        if is_chart_ready(chart):
+            chart.data_series = [
+                ft.LineChartData(
+                    data_points=[
+                        ft.LineChartDataPoint(j, p[1])
+                        for j, p in enumerate(metrics_data_series[i])
+                    ],
+                    stroke_width=2,
+                    color=chart_colors[i],
+                    curved=True,
+                    stroke_cap_round=True,
+                )
+                for i in range(5)
+            ]
+            chart.bottom_axis.labels = [
+                ft.ChartAxisLabel(
+                    j,
+                    ft.Text(value=p[0], size=10, color=ft.Colors.WHITE)
+                )
+                for j, p in enumerate(metrics_data_series[0]) if j % (max_points // 10) == 0
             ]
             chart.update()
 
@@ -153,7 +198,9 @@ def osc_handler(address, *args):
         if data:
             chart_number = 1
             y_values = [float(value) for value in data[:5]]
-            metricsCalculator.process(timestamp, *y_values)
+            metrics_results = metricsCalculator.process(timestamp, *y_values)
+            if metrics_results is not None:
+                buffer_metrics_data(timestamp, metrics_results)  # Guardar métricas en buffer
             buffer_channel_data(timestamp, y_values)
 
 def start_osc_server(port):
@@ -178,7 +225,7 @@ def main(page: ft.Page):
     page.scroll = ft.ScrollMode.AUTO
     page.padding = CARD_PADDING
 
-    global chart_column, active_charts, eeg_charts, channel_charts
+    global chart_column, active_charts, eeg_charts, channel_charts, metrics_charts
 
     ip_text = ft.Text(f"{get_local_ip()}", size=14, color="#7e8bc0", weight="bold")
 
@@ -209,9 +256,13 @@ def main(page: ft.Page):
 
     eeg_charts.clear()
     channel_charts.clear()
+    metrics_charts.clear()
+
     for i in range(6):
         eeg_charts.append(generate_plot())
     channel_charts = [generate_plot(height=600)]
+    metrics_charts = [generate_plot(height=600)]  # Gráfica vacía por defecto
+
     active_charts = eeg_charts
 
     chart_column = ft.Column()
@@ -251,8 +302,24 @@ def main(page: ft.Page):
         )
         page.update()
 
+    def show_metrics_charts(e):
+        global active_charts
+        active_charts = metrics_charts
+        chart_column.controls.clear()
+        chart_column.controls.append(
+            ft.Column([
+                metrics_charts[0],
+                ft.Row([
+                    ft.Text(f"Metric {i+1}", color=chart_colors[i])
+                    for i in range(5)
+                ], alignment=ft.MainAxisAlignment.SPACE_EVENLY)
+            ])
+        )
+        page.update()
+
     eeg_button = ft.ElevatedButton("EEG", on_click=show_eeg_charts)
     channel_button = ft.ElevatedButton("CHANNELS", on_click=show_channel_charts)
+    metrics_button = ft.ElevatedButton("METRICS", on_click=show_metrics_charts)
 
     file_picker = ft.FilePicker()
     page.overlay.append(file_picker)
@@ -278,7 +345,7 @@ def main(page: ft.Page):
                     ft.Text("IP ADDRESS:", size=14, color=ft.Colors.WHITE),
                     ft.Container(content=ip_text, bgcolor="#374151", padding=5, border_radius=5)
                 ]),
-                ft.Row([eeg_button, channel_button])
+                ft.Row([eeg_button, channel_button, metrics_button])
             ], alignment="spaceBetween"), bgcolor=CARD_COLOR, padding=CARD_PADDING, border_radius=CARD_RADIUS),
             ft.Container(ft.Column([chart_column]), bgcolor=CARD_COLOR, padding=CARD_PADDING, border_radius=CARD_RADIUS, height=700),
             ft.Container(ft.Column([

@@ -95,4 +95,4 @@ class MetricsCalculator:
                 self.last_calculation_time = now
                 return bar, hai, tar, tbr, wi
 
-        return None, None, None, None, None
+        return None
